@@ -126,6 +126,14 @@ service elasticsearch restart
 sudo bin/elasticsearch-plugin install analysis-nori
 ```
 
+### reference
+
+- https://pinggoopark.tistory.com/54
+- https://backendcode.tistory.com/262
+- https://leftday.tistory.com/94
+- https://www.elastic.co/guide/en/elasticsearch/plugins/current/analysis-nori.html#analysis-nori-install
+
+
 ## 2. Elasticsearch Python Client
 
 ### 1) 사전작업
@@ -280,3 +288,7 @@ response = es.search(index=INDEX_NAME, query=query, size=5)
 # 검색된 목록 반환
 response['hits']
 ```
+
+### reference
+
+- https://github.com/thejungwon/search-engine-tutorial
