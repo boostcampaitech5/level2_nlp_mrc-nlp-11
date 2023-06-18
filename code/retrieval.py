@@ -73,9 +73,6 @@ class SparseRetrieval:
             self.p_embedding = None  # get_sparse_embedding()로 생성합니다
             self.indexer = None  # build_faiss()로 생성합니다.
             self.get_sparse_embedding()
-        elif self.data_args.sparse_embedding == "elasticsearch":
-            # TODO: 연결 안됐을 때 exception 처리
-            self.client = Elasticsearch("http://localhost:9200")
 
     def __call__(self, query_or_dataset: Union[str, Dataset], topk: Optional[int] = 1) -> Union[Tuple[List, List], pd.DataFrame]:
         if self.data_args.use_faiss and self.data_args.sparse_embedding == "tfidf":
@@ -84,7 +81,10 @@ class SparseRetrieval:
         elif self.data_args.sparse_embedding == "tfidf":
             return self.retrieve_tfidf(query_or_dataset, topk)
         elif self.data_args.sparse_embedding == "elasticsearch":
-            return self.retrieve_es(query_or_dataset, topk)
+            # TODO: 연결 안됐을 때 exception 처리
+            with Elasticsearch("http://localhost:9200") as client:
+                res = self.retrieve_es(query_or_dataset, topk, client)
+            return res
 
     def get_sparse_embedding(self) -> None:
         """
@@ -151,7 +151,10 @@ class SparseRetrieval:
             print("Faiss Indexer Saved.")
 
     # TODO: es, tfidf, faiss, dense? 비슷한 기능의 함수 하나로 합치기
-    def retrieve_es(self, query_or_dataset: Union[str, Dataset], topk: Optional[int] = 1) -> Union[Tuple[List, List], pd.DataFrame]:
+    def retrieve_es(self,
+                    query_or_dataset: Union[str, Dataset],
+                    topk: Optional[int] = 1,
+                    client: Optional[Elasticsearch] = None) -> Union[Tuple[List, List], pd.DataFrame]:
         """_summary_
 
         Args:
@@ -173,11 +176,11 @@ class SparseRetrieval:
                 Ground Truth가 있는 Query (train/valid) -> 기존 Ground Truth Passage를 같이 반환합니다.
                 Ground Truth가 없는 Query (test) -> Retrieval한 Passage만 반환합니다.
         """
-        assert self.client.ping(), "client와 server 사이 연결이 끊어졌습니다."
+        assert client.ping(), "client와 server 사이 연결이 끊어졌습니다."
 
         if isinstance(query_or_dataset, str):
             # doc_indices -> doc_texts. elasticsearch는 바로 text를 반환하므로 전처리 필요 x
-            doc_scores, doc_texts = self.get_relevant_doc_es(query_or_dataset, k=topk)
+            doc_scores, doc_texts = self.get_relevant_doc_es(query_or_dataset, k=topk, client=client)
             print("[Search query]\n", query_or_dataset, "\n")
 
             for i in range(topk):
@@ -192,7 +195,7 @@ class SparseRetrieval:
             total = []
             with timer("query elastic search"):
                 # doc_indices -> doc_texts. elasticsearch는 바로 text를 반환하므로 전처리 필요 x
-                doc_scores, doc_texts = self.get_relevant_doc_bulk_es(query_or_dataset["question"], k=topk)
+                doc_scores, doc_texts = self.get_relevant_doc_bulk_es(query_or_dataset["question"], k=topk, client=client)
             for idx, example in enumerate(tqdm(query_or_dataset, desc="Sparse retrieval: ")):
                 tmp = {
                     # Query와 해당 id를 반환합니다.
@@ -211,7 +214,7 @@ class SparseRetrieval:
             cqas = pd.DataFrame(total)
             return cqas
 
-    def get_relevant_doc_es(self, query: str, k: Optional[int] = 1) -> Tuple[List, List]:
+    def get_relevant_doc_es(self, query: str, k: Optional[int] = 1, client: Optional[Elasticsearch] = None) -> Tuple[List, List]:
         """
         Arguments:
             query (str):
@@ -222,13 +225,13 @@ class SparseRetrieval:
 
         with timer("elastic search"):
             query = {"match": {"text": query}}
-            response = self.client.search(index=self.data_args.es_index, query=query, size=k)
+            response = client.search(index=self.data_args.es_index, query=query, size=k)
 
         doc_score = [i['_score'] for i in response['hits']['hits']]
         doc_texts = [i['_source']['text'] for i in response['hits']['hits']]
         return doc_score, doc_texts
 
-    def get_relevant_doc_bulk_es(self, queries: List, k: Optional[int] = 1) -> Tuple[List, List]:
+    def get_relevant_doc_bulk_es(self, queries: List, k: Optional[int] = 1, client: Optional[Elasticsearch] = None) -> Tuple[List, List]:
         """
         Arguments:
             queries (List):
@@ -241,7 +244,7 @@ class SparseRetrieval:
         doc_texts = []
         for query in tqdm(queries, desc="Elastic search retrieval: "):
             q = {"match": {"text": query}}
-            response = self.client.search(index=self.data_args.es_index, query=q, size=k)
+            response = client.search(index=self.data_args.es_index, query=q, size=k)
             doc_scores.append([i['_score'] for i in response['hits']['hits']])
             doc_texts.append([i['_source']['text'] for i in response['hits']['hits']])
 

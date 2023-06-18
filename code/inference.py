@@ -96,9 +96,6 @@ def run_sparse_retrieval(
     # Query에 맞는 Passage들을 Retrieval 합니다.
     retriever = SparseRetrieval(tokenize_fn=tokenize_fn, data_path=data_path, context_path=context_path, data_args=data_args)
     df = retriever(datasets["validation"], topk=data_args.top_k_retrieval)
-    # TODO: df 만든 후 자동으로 세션 종료되도록 수정
-    if data_args.sparse_embedding == "elasticsearch":
-        retriever.client.close()
 
     # test data 에 대해선 정답이 없으므로 id question context 로만 데이터셋이 구성됩니다.
     if training_args.do_predict:
