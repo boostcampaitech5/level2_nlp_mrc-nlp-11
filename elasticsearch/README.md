@@ -361,9 +361,15 @@ curl -X GET "http://localhost:9200/_snapshot/_all?pretty"
 ```bash
 curl -X GET "http://localhost:9200/_cat/indices"
 ```
-<img width="544" alt="image" src="https://github.com/boostcampaitech5/level2_nlp_mrc-nlp-11/assets/102800474/71c51bc6-9ca8-4132-a70e-d127b0ca799f">   
+
+<details>
+<summary>확인</summary>
+
+<img width="544" alt="image" src="https://github.com/boostcampaitech5/level2_nlp_mrc-nlp-11/assets/102800474/71c51bc6-9ca8-4132-a70e-d127b0ca799f">
 
 - 3번째 인자('wiki')가 인덱스 이름
+
+</details>
 
 #### d. snapshot 생성
 
@@ -379,10 +385,14 @@ curl -X PUT "http://localhost:9200/_snapshot/my_backup/MY_SNAPSHOT_NAME?wait_for
 - `MY_SNAPSHOT_NAME`에 생성할 snapshot의 이름을 넣기
 - `MY_INDEX_NAME`에 생성할 snapshot의 인덱스 이름을 넣기
 
-##### a) 확인
+##### b) 확인
 
-- 아래와 같은 형태로 파일이 생성되었다면 성공
+<details>
+<summary>아래와 같은 형태로 파일이 생성되었다면 성공</summary>
+
 <img width="401" alt="image" src="https://github.com/boostcampaitech5/level2_nlp_mrc-nlp-11/assets/102800474/79f5243f-e3da-4b72-af8e-545c5c6d7779">
+
+</details>
 
 - 해당 폴더를 압축하여 snapshot을 불러올 서버로 전송
 
@@ -414,8 +424,14 @@ mkdir backup
 chmod 777 MY_DIRECTORY/elasticsearch MY_DIRECTORY/elasticsearch/backup
 ```
 
-##### c) backup폴더 안에 전송된 snapshot 데이터 압축 풀기
+##### c) backup 디렉터리 안에 전송된 snapshot 데이터 압축 풀기
+
+<details>
+<summary>확인</summary>
+
 <img width="401" alt="image" src="https://github.com/boostcampaitech5/level2_nlp_mrc-nlp-11/assets/102800474/79f5243f-e3da-4b72-af8e-545c5c6d7779">
+
+</details>
 
 ##### d) Elasticsearch 서버 재시작
 
@@ -451,8 +467,13 @@ curl -X GET "http://localhost:9200/_snapshot/_all?pretty"
 ```bash
 curl -X GET "http://localhost:9200/_snapshot/my_backup/_all?pretty"
 ```
+
+<details>
+<summary>확인</summary>
+
 <img width="698" alt="image" src="https://github.com/boostcampaitech5/level2_nlp_mrc-nlp-11/assets/102800474/4ec70f06-8b9d-48ae-b2d4-b433e9765184">
 
+</details>
 
 ##### b) snapshot 복원
 
@@ -466,7 +487,8 @@ curl -XPOST "http://localhost:9200/_snapshot/my_backup/MY_SNAPSHOT_NAME/_restore
 }'
 ```
 
-###### 인덱스 삭제
+<details>
+<summary>인덱스 삭제</summary>
 
 - 해당 클러스터에 같은 이름의 인덱스가 존재할 경우 불러와지지 않음
 - 클러스터 내 인덱스를 삭제 후 복원하기
@@ -478,6 +500,8 @@ curl -X DELETE "http://localhost:9200/MY_INDEX_NAME"
 # 확인
 curl -X DELETE "http://localhost:9200/MY_INDEX_NAME"
 ```
+
+</details>
 
 ##### c) 인덱스 확인
 
