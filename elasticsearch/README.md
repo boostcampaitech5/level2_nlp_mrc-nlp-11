@@ -119,6 +119,12 @@ xpack.security.enabled: false
 service elasticsearch restart
 ```
 
+### 7) plugin 설치
+
+```bash
+# Korean (nori) analysis plugin
+sudo bin/elasticsearch-plugin install analysis-nori
+```
 
 ## 2. Elasticsearch Python Client
 
