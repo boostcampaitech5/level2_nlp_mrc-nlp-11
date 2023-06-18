@@ -76,3 +76,11 @@ class DataTrainingArguments:
         metadata={"help": "Define how many top-k passages to retrieve based on similarity."},
     )
     use_faiss: bool = field(default=False, metadata={"help": "Whether to build with faiss"})
+    sparse_embedding: Optional[str] = field(
+        default="elasticsearch",
+        metadata={"help": "어떤 sparse embedding을 쓸 것인지에 대한 인자. 기본 : 'elasticsearch', 사용 가능 인자 : 'elasticsearch', 'tfidf'"},
+    )
+    es_index: Optional[str] = field(
+        default="wiki",
+        metadata={"help": "elasticsearch에서 어떤 인덱스를 쓸 것인지에 대한 인자. 기본 : 'wiki', 사용 가능 인자 : 'wiki', 추가 예정 : 'wiki_preprocessed'"},
+    )

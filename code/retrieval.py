@@ -11,6 +11,8 @@ import pandas as pd
 from datasets import Dataset, concatenate_datasets, load_from_disk
 from sklearn.feature_extraction.text import TfidfVectorizer
 from tqdm.auto import tqdm
+from arguments import DataTrainingArguments
+from elasticsearch import Elasticsearch
 
 
 @contextmanager
@@ -27,6 +29,7 @@ class SparseRetrieval:
         tokenize_fn,
         data_path: Optional[str] = "../data/",
         context_path: Optional[str] = "wikipedia_documents.json",
+        data_args: Optional[DataTrainingArguments] = None,
     ) -> None:
         """
         Arguments:
@@ -42,30 +45,46 @@ class SparseRetrieval:
 
             context_path:
                 Passage들이 묶여있는 파일명입니다.
+            
+            data_args:
+                모델의 데이터 인자들입니다. embedding의 방법을 결정하는 data_args.sparse_embedding을 포함합니다.
 
             data_path/context_path가 존재해야합니다.
 
         Summary:
             Passage 파일을 불러오고 TfidfVectorizer를 선언하는 기능을 합니다.
         """
+        self.data_args = data_args
+        if self.data_args.sparse_embedding == "tfidf":
+            self.data_path = data_path
+            with open(os.path.join(data_path, context_path), "r", encoding="utf-8") as f:
+                wiki = json.load(f)
 
-        self.data_path = data_path
-        with open(os.path.join(data_path, context_path), "r", encoding="utf-8") as f:
-            wiki = json.load(f)
+            self.contexts = list(dict.fromkeys([v["text"] for v in wiki.values()]))  # set 은 매번 순서가 바뀌므로
+            print(f"Lengths of unique contexts : {len(self.contexts)}")
+            self.ids = list(range(len(self.contexts)))
+            # Transform by vectorizer
+            self.tfidfv = TfidfVectorizer(
+                tokenizer=tokenize_fn,
+                ngram_range=(1, 2),
+                max_features=50000,
+            )
 
-        self.contexts = list(dict.fromkeys([v["text"] for v in wiki.values()]))  # set 은 매번 순서가 바뀌므로
-        print(f"Lengths of unique contexts : {len(self.contexts)}")
-        self.ids = list(range(len(self.contexts)))
+            self.p_embedding = None  # get_sparse_embedding()로 생성합니다
+            self.indexer = None  # build_faiss()로 생성합니다.
+            self.get_sparse_embedding()
+        elif self.data_args.sparse_embedding == "elasticsearch":
+            # TODO: 연결 안됐을 때 exception 처리
+            self.client = Elasticsearch("http://localhost:9200")
 
-        # Transform by vectorizer
-        self.tfidfv = TfidfVectorizer(
-            tokenizer=tokenize_fn,
-            ngram_range=(1, 2),
-            max_features=50000,
-        )
-
-        self.p_embedding = None  # get_sparse_embedding()로 생성합니다
-        self.indexer = None  # build_faiss()로 생성합니다.
+    def __call__(self, query_or_dataset: Union[str, Dataset], topk: Optional[int] = 1) -> Union[Tuple[List, List], pd.DataFrame]:
+        if self.data_args.use_faiss and self.data_args.sparse_embedding == "tfidf":
+            self.build_faiss(num_clusters=self.data_args.num_clusters)
+            return self.retrieve_faiss(query_or_dataset, topk)
+        elif self.data_args.sparse_embedding == "tfidf":
+            return self.retrieve_tfidf(query_or_dataset, topk)
+        elif self.data_args.sparse_embedding == "elasticsearch":
+            return self.retrieve_es(query_or_dataset, topk)
 
     def get_sparse_embedding(self) -> None:
         """
@@ -131,7 +150,104 @@ class SparseRetrieval:
             faiss.write_index(self.indexer, indexer_path)
             print("Faiss Indexer Saved.")
 
-    def retrieve(self, query_or_dataset: Union[str, Dataset], topk: Optional[int] = 1) -> Union[Tuple[List, List], pd.DataFrame]:
+    # TODO: es, tfidf, faiss, dense? 비슷한 기능의 함수 하나로 합치기
+    def retrieve_es(self, query_or_dataset: Union[str, Dataset], topk: Optional[int] = 1) -> Union[Tuple[List, List], pd.DataFrame]:
+        """_summary_
+
+        Args:
+            query_or_dataset (Union[str, Dataset]): 
+                str이나 Dataset으로 이루어진 Query를 받습니다.
+                str 형태인 하나의 query만 받으면 `get_relevant_doc_es`을 통해 유사도를 구합니다.
+                Dataset 형태는 query를 포함한 HF.Dataset을 받습니다.
+                이 경우 `get_relevant_doc_bulk_es`를 통해 유사도를 구합니다.
+            topk (Optional[int], optional): Defaults to 1.
+                상위 몇 개의 passage를 사용할 것인지 지정합니다.
+
+        Returns:
+            Union[Tuple[List, List], pd.DataFrame]: 
+                1개의 Query를 받는 경우  -> Tuple(List, List)
+                다수의 Query를 받는 경우 -> pd.DataFrame: [description]
+        
+        Note:
+            다수의 Query를 받는 경우,
+                Ground Truth가 있는 Query (train/valid) -> 기존 Ground Truth Passage를 같이 반환합니다.
+                Ground Truth가 없는 Query (test) -> Retrieval한 Passage만 반환합니다.
+        """
+        assert self.client.ping(), "client와 server 사이 연결이 끊어졌습니다."
+
+        if isinstance(query_or_dataset, str):
+            # doc_indices -> doc_texts. elasticsearch는 바로 text를 반환하므로 전처리 필요 x
+            doc_scores, doc_texts = self.get_relevant_doc_es(query_or_dataset, k=topk)
+            print("[Search query]\n", query_or_dataset, "\n")
+
+            for i in range(topk):
+                print(f"Top-{i+1} passage with score {doc_scores[i]:4f}")
+                print(self.contexts[doc_texts[i]])
+
+            return (doc_scores, [self.contexts[doc_texts[i]] for i in range(topk)])
+
+        elif isinstance(query_or_dataset, Dataset):
+
+            # Retrieve한 Passage를 pd.DataFrame으로 반환합니다.
+            total = []
+            with timer("query elastic search"):
+                # doc_indices -> doc_texts. elasticsearch는 바로 text를 반환하므로 전처리 필요 x
+                doc_scores, doc_texts = self.get_relevant_doc_bulk_es(query_or_dataset["question"], k=topk)
+            for idx, example in enumerate(tqdm(query_or_dataset, desc="Sparse retrieval: ")):
+                tmp = {
+                    # Query와 해당 id를 반환합니다.
+                    "question": example["question"],
+                    "id": example["id"],
+                    # Retrieve한 Passage의 id, context를 반환합니다.
+                    # doc_indices[idx] -> text 변환 불필요
+                    "context": " ".join(doc_texts[idx]),
+                }
+                if "context" in example.keys() and "answers" in example.keys():
+                    # validation 데이터를 사용하면 ground_truth context와 answer도 반환합니다.
+                    tmp["original_context"] = example["context"]
+                    tmp["answers"] = example["answers"]
+                total.append(tmp)
+
+            cqas = pd.DataFrame(total)
+            return cqas
+
+    def get_relevant_doc_es(self, query: str, k: Optional[int] = 1) -> Tuple[List, List]:
+        """
+        Arguments:
+            query (str):
+                하나의 Query를 받습니다.
+            k (Optional[int]): 1
+                상위 몇 개의 Passage를 반환할지 정합니다.
+        """
+
+        with timer("elastic search"):
+            query = {"match": {"text": query}}
+            response = self.client.search(index=self.data_args.es_index, query=query, size=k)
+
+        doc_score = [i['_score'] for i in response['hits']['hits']]
+        doc_texts = [i['_source']['text'] for i in response['hits']['hits']]
+        return doc_score, doc_texts
+
+    def get_relevant_doc_bulk_es(self, queries: List, k: Optional[int] = 1) -> Tuple[List, List]:
+        """
+        Arguments:
+            queries (List):
+                하나의 Query를 받습니다.
+            k (Optional[int]): 1
+                상위 몇 개의 Passage를 반환할지 정합니다.
+        """
+
+        doc_scores = []
+        doc_texts = []
+        for query in tqdm(queries, desc="Elastic search retrieval: "):
+            q = {"match": {"text": query}}
+            response = self.client.search(index=self.data_args.es_index, query=q, size=k)
+            doc_scores.append([i['_score'] for i in response['hits']['hits']])
+            doc_texts.append([i['_source']['text'] for i in response['hits']['hits']])
+
+        return doc_scores, doc_texts
+
+    def retrieve_tfidf(self, query_or_dataset: Union[str, Dataset], topk: Optional[int] = 1) -> Union[Tuple[List, List], pd.DataFrame]:
         """
         Arguments:
             query_or_dataset (Union[str, Dataset]):
@@ -155,7 +271,7 @@ class SparseRetrieval:
         assert self.p_embedding is not None, "get_sparse_embedding() 메소드를 먼저 수행해줘야합니다."
 
         if isinstance(query_or_dataset, str):
-            doc_scores, doc_indices = self.get_relevant_doc(query_or_dataset, k=topk)
+            doc_scores, doc_indices = self.get_relevant_doc_tfidf(query_or_dataset, k=topk)
             print("[Search query]\n", query_or_dataset, "\n")
 
             for i in range(topk):
@@ -169,7 +285,7 @@ class SparseRetrieval:
             # Retrieve한 Passage를 pd.DataFrame으로 반환합니다.
             total = []
             with timer("query exhaustive search"):
-                doc_scores, doc_indices = self.get_relevant_doc_bulk(query_or_dataset["question"], k=topk)
+                doc_scores, doc_indices = self.get_relevant_doc_bulk_tfidf(query_or_dataset["question"], k=topk)
             for idx, example in enumerate(tqdm(query_or_dataset, desc="Sparse retrieval: ")):
                 tmp = {
                     # Query와 해당 id를 반환합니다.
@@ -187,7 +303,7 @@ class SparseRetrieval:
             cqas = pd.DataFrame(total)
             return cqas
 
-    def get_relevant_doc(self, query: str, k: Optional[int] = 1) -> Tuple[List, List]:
+    def get_relevant_doc_tfidf(self, query: str, k: Optional[int] = 1) -> Tuple[List, List]:
         """
         Arguments:
             query (str):
@@ -212,7 +328,7 @@ class SparseRetrieval:
         doc_indices = sorted_result.tolist()[:k]
         return doc_score, doc_indices
 
-    def get_relevant_doc_bulk(self, queries: List, k: Optional[int] = 1) -> Tuple[List, List]:
+    def get_relevant_doc_bulk_tfidf(self, queries: List, k: Optional[int] = 1) -> Tuple[List, List]:
         """
         Arguments:
             queries (List):
@@ -392,7 +508,7 @@ if __name__ == "__main__":
 
     else:
         with timer("bulk query by exhaustive search"):
-            df = retriever.retrieve(full_ds)
+            df = retriever.retrieve_tfidf(full_ds)
             df["correct"] = df["original_context"] == df["context"]
             print(
                 "correct retrieval result by exhaustive search",
@@ -400,4 +516,4 @@ if __name__ == "__main__":
             )
 
         with timer("single query by exhaustive search"):
-            scores, indices = retriever.retrieve(query)
+            scores, indices = retriever.retrieve_tfidf(query)
