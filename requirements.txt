@@ -9,3 +9,4 @@ scikit-learn==1.2.2
 faiss-gpu==1.7.2
 wandb==0.15.4
 yapf==0.40.0
+elasticsearch==8.8.0
