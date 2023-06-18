@@ -292,3 +292,200 @@ response['hits']
 ### reference
 
 - https://github.com/thejungwon/search-engine-tutorial
+
+
+## 3. Elasticsearch snapshot
+
+### 1) 개요
+
+- `BM25`방식이 rule-based기 때문에 각자의 서버에서 Elasticsearch 데이터베이스를 만들어도 결과물이 같겠지만, 혹시 모를 상황을 대비해 원본 데이터의 snapshot을 만들어 각 서버에 배포 / snapshot 복원 방법을 정리
+
+### 2) snapshot 생성
+- 원본 데이터가 있는 서버에서 진행
+
+#### a. snapshot을 저장할 repository 생성
+
+##### a) repository 경로 추가
+
+```bash
+code /etc/elasticsearch/elasticsearch.yml
+```
+
+```yaml
+# 마지막 줄에 아래 코드 추가
+# MY_DIRECTORY = repository를 사용할 디렉터리
+path.repo: ["MY_DIRECTORY/elasticsearch/backup"]
+```
+
+##### b) 해당 경로에 repository 디렉터리 생성, 수정 권한 변경
+
+```bash
+# repository를 사용할 디렉터리로 이동 후,
+mkdir elasticsearch
+cd elasticsearch
+mkdir backup
+# MY_DIRECTORY = repository를 사용할 디렉터리
+chmod 777 MY_DIRECTORY/elasticsearch MY_DIRECTORY/elasticsearch/backup
+```
+
+##### c) Elasticsearch 서버 재시작
+
+```bash
+service elasticsearch restart
+```
+
+#### b. 백업 repository 등록
+
+##### a) 등록
+
+```bash
+# MY_DIRECTORY = repository를 사용할 디렉터리
+curl -X PUT "http://localhost:9200/_snapshot/my_backup?pretty" -H 'Content-Type: application/json' -d'
+{
+ "type": "fs",
+ "settings": {
+   "location": "MY_DIRECTORY/elasticsearch/backup",
+    "compress": true
+ }
+}'
+```
+
+##### b) 확인
+
+```bash
+curl -X GET "http://localhost:9200/_snapshot/_all?pretty"
+```
+
+#### c. snapshot을 생성할 인덱스 확인
+
+```bash
+curl -X GET "http://localhost:9200/_cat/indices"
+```
+<img width="544" alt="image" src="https://github.com/boostcampaitech5/level2_nlp_mrc-nlp-11/assets/102800474/71c51bc6-9ca8-4132-a70e-d127b0ca799f">   
+
+- 3번째 인자('wiki')가 인덱스 이름
+
+#### d. snapshot 생성
+
+##### a) 생성
+```bash
+curl -X PUT "http://localhost:9200/_snapshot/my_backup/MY_SNAPSHOT_NAME?wait_for_completion=true" -H 'Content-Type: application/json' -d'
+{
+  "indices": "MY_INDEX_NAME",
+  "include_global_state": true
+}
+'
+```
+- `MY_SNAPSHOT_NAME`에 생성할 snapshot의 이름을 넣기
+- `MY_INDEX_NAME`에 생성할 snapshot의 인덱스 이름을 넣기
+
+##### a) 확인
+
+- 아래와 같은 형태로 파일이 생성되었다면 성공
+<img width="401" alt="image" src="https://github.com/boostcampaitech5/level2_nlp_mrc-nlp-11/assets/102800474/79f5243f-e3da-4b72-af8e-545c5c6d7779">
+
+- 해당 폴더를 압축하여 snapshot을 불러올 서버로 전송
+
+### 3) snapshot 불러오기
+- snapshot을 사용할 서버에서 진행
+
+#### a. snapshot을 불러올 repository 생성
+
+##### a) repository 경로 추가
+
+```bash
+code /etc/elasticsearch/elasticsearch.yml
+```
+
+```yaml
+# 마지막 줄에 아래 코드 추가
+# MY_DIRECTORY = repository를 사용할 경로
+path.repo: ["MY_DIRECTORY/elasticsearch/backup"]
+```
+
+##### b) 해당 경로에 repository 디렉터리 생성, 수정 권한 변경
+
+```bash
+# repository를 사용할 디렉터리로 이동 후,
+mkdir elasticsearch
+cd elasticsearch
+mkdir backup
+# MY_DIRECTORY = repository를 사용할 디렉터리
+chmod 777 MY_DIRECTORY/elasticsearch MY_DIRECTORY/elasticsearch/backup
+```
+
+##### c) backup폴더 안에 전송된 snapshot 데이터 압축 풀기
+<img width="401" alt="image" src="https://github.com/boostcampaitech5/level2_nlp_mrc-nlp-11/assets/102800474/79f5243f-e3da-4b72-af8e-545c5c6d7779">
+
+##### d) Elasticsearch 서버 재시작
+
+```bash
+service elasticsearch restart
+```
+
+#### b. 백업 repository 등록
+
+##### a) 등록
+```bash
+curl -X PUT "http://localhost:9200/_snapshot/my_backup?pretty" -H 'Content-Type: application/json' -d'
+{
+ "type": "fs",
+ "settings": {
+   "location": "/opt/ml/elasticsearch/backup",
+    "compress": true
+ }
+}'
+```
+
+##### b) 확인
+
+```bash
+# my_backup repository가 등록되었는지 확인
+curl -X GET "http://localhost:9200/_snapshot/_all?pretty"
+```
+
+#### c. snapshot 복원
+
+##### a) snapshot 확인
+
+```bash
+curl -X GET "http://localhost:9200/_snapshot/my_backup/_all?pretty"
+```
+<img width="698" alt="image" src="https://github.com/boostcampaitech5/level2_nlp_mrc-nlp-11/assets/102800474/4ec70f06-8b9d-48ae-b2d4-b433e9765184">
+
+
+##### b) snapshot 복원
+
+```bash
+# MY_SNAPSHOT_NAME = 복원할 snapshot의 이름
+# MY_INDEX_NAME =  복원할 snapshot의 인덱스 이름
+curl -XPOST "http://localhost:9200/_snapshot/my_backup/MY_SNAPSHOT_NAME/_restore" -H 'Content-Type: application/json' -d'
+{
+ "indices": "MY_INDEX_NAME",
+ "include_global_state": true
+}'
+```
+
+###### 인덱스 삭제
+
+- 해당 클러스터에 같은 이름의 인덱스가 존재할 경우 불러와지지 않음
+- 클러스터 내 인덱스를 삭제 후 복원하기
+
+```bash
+# 삭제
+curl -X DELETE "http://localhost:9200/MY_INDEX_NAME"
+
+# 확인
+curl -X DELETE "http://localhost:9200/MY_INDEX_NAME"
+```
+
+##### c) 인덱스 확인
+
+```bash
+curl -X GET "http://localhost:9200/_cat/indices?pretty"
+```
+
+### reference
+
+- https://kay0426.tistory.com/46
+- https://gh402.tistory.com/51
