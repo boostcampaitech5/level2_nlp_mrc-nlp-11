@@ -177,9 +177,90 @@ es.ping()
 es.info()
 ```
 
-### 3) (Optional) Wikipedia 데이터로 Elasticsearch Indexing
+### (Optional) Wikipedia 데이터로 Elasticsearch Indexing
 
-#### a. 검색
+#### a. 검색 말뭉치 이름, 인덱싱 방식 지정
+
+```python
+INDEX_NAME = "wiki"
+
+INDEX_SETTINGS = {
+    "settings": {
+        "analysis": {
+            "filter": {
+                "my_shingle": {
+                    "type": "shingle"
+                }
+            },
+            "analyzer": {
+                "my_analyzer": {
+                    "type": "custom",
+                    "tokenizer": "nori_tokenizer",
+                    "decompound_mode": "mixed",
+                    "filter": ["my_shingle"]
+                }
+            },
+            "similairty": {
+                "my_similarity": {
+                    "type": "BM25"
+                }
+            }
+        }
+    },
+
+    "mappings": {
+        "properties": {
+            "text": {
+                "type": "text",
+                "analyzer": "my_analyzer"
+            }
+        }
+    }
+} 
+
+es.indices.create(index=INDEX_NAME, body=INDEX_SETTINGS)
+```
+
+#### b. 위키 데이터 불러오기
+
+```python
+dataset_path = "./data/wikipedia_documents.json"
+with open(dataset_path, "r") as f:
+    wiki = json.load(f)
+    
+print(len(wiki))
+print(type(wiki))
+```
+
+```python
+wiki_texts = [{"text":text} for text in list(dict.fromkeys(v["text"] for v in wiki.values()))]
+```
+
+- 전처리 수행 가능(개행문자, 공백문자 치환, 문서 제목 넣기 등)
+
+#### c. Indexing
+
+```python
+# 10분 정도 소요
+for i, text in enumerate(tqdm(wiki_texts)):
+    try:
+        es.index(index=INDEX_NAME, id=i, document=text)
+    except Exception as e:
+        print(e)
+        print(f"Unable to load document {i}.")
+```
+
+```python
+# 문서 id로 반환 가능한지 확인
+es.get(index=INDEX_NAME, id=0)
+```
+
+```python
+# analyze 메서드로 입력 쿼리, 문서의 토큰화 확인 가능
+es.indices.analyze(index=INDEX_NAME, analyzer="my_analyzer", text="백남준이 태어난 해가 언제야?",)
+```
+
+### 3) 검색
 
 ```python
 query = {
