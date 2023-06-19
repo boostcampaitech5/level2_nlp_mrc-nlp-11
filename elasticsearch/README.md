@@ -38,7 +38,7 @@ javac -version
 
 ```bash
 # ./profile 실행
-code ~/.profile
+vi ~/.profile
 ```
 
 ```bash
@@ -58,6 +58,9 @@ echo $JAVA_HOME
 ### 3) Elasticsearch 설치
 
 ```bash
+# curl 설치
+sudo apt-get install curl
+
 # Elasticsearch public GPG 키 추가
 curl -fsSL https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo apt-key add -
 
@@ -76,7 +79,7 @@ sudo apt install elasticsearch
 #### a. network host 수정
 
 ```bash
-code /etc/elasticsearch/elasticsearch.yml
+vi /etc/elasticsearch/elasticsearch.yml
 ```
 
 ```yaml
@@ -93,8 +96,7 @@ service elasticsearch start
 # 실행 완료 -> 서버 중지
 service elasticsearch stop
 
-# sudo apt-get install apt-transport-https
-echo "deb [signed-by=/usr/share/keyrings/elasticsearch-keyring.gpg] https://artifacts.elastic.co/packages/8.x/apt stable main" | sudo tee /etc/apt/sources.list.d/elastic-8.x.list
+echo "deb https://artifacts.elastic.co/packages/8.x/apt stable main" | sudo tee -a /etc/apt/sources.list.d/elastic-8.x.list
 sudo apt-get update && sudo apt-get install elasticsearch
 
 # 실행 여부 확인 -> 정상 실행까지 반복
@@ -106,7 +108,7 @@ service elasticsearch start
 ### 6) security 설정 변경
 
 ```bash
-code /etc/elasticsearch/elasticsearch.yml
+vi /etc/elasticsearch/elasticsearch.yml
 ```
 
 ```yaml
@@ -123,7 +125,7 @@ service elasticsearch restart
 
 ```bash
 # Korean (nori) analysis plugin
-sudo bin/elasticsearch-plugin install analysis-nori
+sudo /usr/share/elasticsearch/bin/elasticsearch-plugin install analysis-nori
 ```
 
 ### reference
@@ -155,7 +157,7 @@ pip install elasticsearch
 #### c. `charset-normalizer` 설치
 
 ```bash
-!pip install -U --force-reinstall charset-normalizer
+pip install -U --force-reinstall charset-normalizer
 ```
 
 ### 2) Python Client 연결
@@ -308,7 +310,7 @@ response['hits']
 ##### a) repository 경로 추가
 
 ```bash
-code /etc/elasticsearch/elasticsearch.yml
+vi /etc/elasticsearch/elasticsearch.yml
 ```
 
 ```yaml
@@ -404,7 +406,7 @@ curl -X PUT "http://localhost:9200/_snapshot/my_backup/MY_SNAPSHOT_NAME?wait_for
 ##### a) repository 경로 추가
 
 ```bash
-code /etc/elasticsearch/elasticsearch.yml
+vi /etc/elasticsearch/elasticsearch.yml
 ```
 
 ```yaml
@@ -442,12 +444,14 @@ service elasticsearch restart
 #### b. 백업 repository 등록
 
 ##### a) 등록
+
 ```bash
+# MY_DIRECTORY = repository를 사용할 경로
 curl -X PUT "http://localhost:9200/_snapshot/my_backup?pretty" -H 'Content-Type: application/json' -d'
 {
  "type": "fs",
  "settings": {
-   "location": "/opt/ml/elasticsearch/backup",
+   "location": "MY_DIRECTORY/elasticsearch/backup",
     "compress": true
  }
 }'
@@ -498,7 +502,7 @@ curl -XPOST "http://localhost:9200/_snapshot/my_backup/MY_SNAPSHOT_NAME/_restore
 curl -X DELETE "http://localhost:9200/MY_INDEX_NAME"
 
 # 확인
-curl -X DELETE "http://localhost:9200/MY_INDEX_NAME"
+curl -X GET "http://localhost:9200/_snapshot/my_backup/_all?pretty"
 ```
 
 </details>
