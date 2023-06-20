@@ -82,7 +82,7 @@ class SparseRetrieval:
             return self.retrieve_tfidf(query_or_dataset, topk)
         elif self.data_args.sparse_embedding == "elasticsearch":
             # TODO: 연결 안됐을 때 exception 처리
-            with Elasticsearch("http://localhost:9200") as client:
+            with Elasticsearch("http://localhost:9200", timeout=3, max_retries=10, retry_on_timeout=True) as client:
                 res = self.retrieve_es(query_or_dataset, topk, client)
             return res
 
