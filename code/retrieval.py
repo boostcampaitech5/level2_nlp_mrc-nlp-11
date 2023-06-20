@@ -82,7 +82,7 @@ class SparseRetrieval:
             return self.retrieve_tfidf(query_or_dataset, topk)
         elif self.data_args.sparse_embedding == "elasticsearch":
             # TODO: 연결 안됐을 때 exception 처리
-            with Elasticsearch("http://localhost:9200") as client:
+            with Elasticsearch("http://localhost:9200", timeout=3, max_retries=10, retry_on_timeout=True) as client:
                 res = self.retrieve_es(query_or_dataset, topk, client)
             return res
 
@@ -195,7 +195,7 @@ class SparseRetrieval:
             total = []
             with timer("query elastic search"):
                 # doc_indices -> doc_texts. elasticsearch는 바로 text를 반환하므로 전처리 필요 x
-                doc_scores, doc_texts = self.get_relevant_doc_bulk_es(query_or_dataset["question"], k=topk, client=client)
+                doc_scores, doc_texts, doc_ids = self.get_relevant_doc_bulk_es(query_or_dataset["question"], k=topk, client=client)
             for idx, example in enumerate(tqdm(query_or_dataset, desc="Sparse retrieval: ")):
                 tmp = {
                     # Query와 해당 id를 반환합니다.
@@ -204,6 +204,7 @@ class SparseRetrieval:
                     # Retrieve한 Passage의 id, context를 반환합니다.
                     # doc_indices[idx] -> text 변환 불필요
                     "context": " ".join(doc_texts[idx]),
+                    "retrieved_ids": doc_ids[idx]
                 }
                 if "context" in example.keys() and "answers" in example.keys():
                     # validation 데이터를 사용하면 ground_truth context와 answer도 반환합니다.
@@ -242,13 +243,15 @@ class SparseRetrieval:
 
         doc_scores = []
         doc_texts = []
+        doc_ids = []
         for query in tqdm(queries, desc="Elastic search retrieval: "):
             q = {"match": {"text": query}}
             response = client.search(index=self.data_args.es_index, query=q, size=k)
             doc_scores.append([i['_score'] for i in response['hits']['hits']])
             doc_texts.append([i['_source']['text'] for i in response['hits']['hits']])
+            doc_ids.append([int(i["_id"]) for i in response['hits']['hits']])
 
-        return doc_scores, doc_texts
+        return doc_scores, doc_texts, doc_ids
 
     def retrieve_tfidf(self, query_or_dataset: Union[str, Dataset], topk: Optional[int] = 1) -> Union[Tuple[List, List], pd.DataFrame]:
         """
@@ -296,6 +299,7 @@ class SparseRetrieval:
                     "id": example["id"],
                     # Retrieve한 Passage의 id, context를 반환합니다.
                     "context": " ".join([self.contexts[pid] for pid in doc_indices[idx]]),
+                    "retrieved_ids": doc_indices[idx]
                 }
                 if "context" in example.keys() and "answers" in example.keys():
                     # validation 데이터를 사용하면 ground_truth context와 answer도 반환합니다.
@@ -459,16 +463,18 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="")
-    parser.add_argument("--dataset_name", metavar="./data/train_dataset", type=str, help="")
+    parser.add_argument("--dataset_name", default="/opt/ml/level2_nlp_mrc-nlp-11/data/train_dataset_2", type=str, help="")
     parser.add_argument(
         "--model_name_or_path",
-        metavar="bert-base-multilingual-cased",
+        default="./models/klue-roberta-large",
         type=str,
         help="",
     )
-    parser.add_argument("--data_path", metavar="./data", type=str, help="")
-    parser.add_argument("--context_path", metavar="wikipedia_documents", type=str, help="")
-    parser.add_argument("--use_faiss", metavar=False, type=bool, help="")
+    parser.add_argument("--data_path", default="/opt/ml/level2_nlp_mrc-nlp-11/data", type=str, help="")
+    parser.add_argument("--context_path", default="wikipedia_documents.json", type=str, help="")
+    parser.add_argument("--use_faiss", default=False, type=bool, help="")
+    parser.add_argument("--sparse_embedding", default="tfidf", type=str, help="")
+    parser.add_argument("--es_index", default="wiki", type=str)
 
     args = parser.parse_args()
 
@@ -488,11 +494,7 @@ if __name__ == "__main__":
         use_fast=False,
     )
 
-    retriever = SparseRetrieval(
-        tokenize_fn=tokenizer.tokenize,
-        data_path=args.data_path,
-        context_path=args.context_path,
-    )
+    retriever = SparseRetrieval(tokenize_fn=tokenizer.tokenize, data_path=args.data_path, context_path=args.context_path, data_args=args)
 
     query = "대통령을 포함한 미국의 행정부 견제권을 갖는 국가 기관은?"
 
@@ -509,14 +511,18 @@ if __name__ == "__main__":
 
             print("correct retrieval result by faiss", df["correct"].sum() / len(df))
 
-    else:
+    elif args.sparse_embedding == "tfidf":
         with timer("bulk query by exhaustive search"):
-            df = retriever.retrieve_tfidf(full_ds)
-            df["correct"] = df["original_context"] == df["context"]
-            print(
-                "correct retrieval result by exhaustive search",
-                df["correct"].sum() / len(df),
-            )
+            df = retriever(full_ds, 100)
+            ids = full_ds["wiki_id"]
+            df["correct"] = [i in j for i, j in zip(ids, df["retrieved_ids"])]
+            df["rank"] = [j.index(i) if i in j else 100 for i, j in zip(ids, df["retrieved_ids"])]
+            print(1)
 
-        with timer("single query by exhaustive search"):
-            scores, indices = retriever.retrieve_tfidf(query)
+    else:
+        with timer("elasticsearch"):
+            df = retriever(full_ds, 100)
+            ids = full_ds["wiki_id"]
+            df["correct"] = [i in j for i, j in zip(ids, df["retrieved_ids"])]
+            df["rank"] = [j.index(i) if i in j else 100 for i, j in zip(ids, df["retrieved_ids"])]
+            print(1)
