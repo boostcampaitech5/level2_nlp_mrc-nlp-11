@@ -103,11 +103,15 @@ def run_sparse_retrieval(
             "context": Value(dtype="string", id=None),
             "id": Value(dtype="string", id=None),
             "question": Value(dtype="string", id=None),
+            "retrieved_ids": Sequence(
+                feature=Value(dtype="int32", id=None),
+                length=-1,
+                id=None,
+            )
         })
 
     # train data 에 대해선 정답이 존재하므로 id question context answer 로 데이터셋이 구성됩니다.
     elif training_args.do_eval:
-        df = df.drop("original_context", axis=1)
         f = Features({
             "answers": Sequence(
                 feature={
@@ -120,6 +124,12 @@ def run_sparse_retrieval(
             "context": Value(dtype="string", id=None),
             "id": Value(dtype="string", id=None),
             "question": Value(dtype="string", id=None),
+            "original_context": Value(dtype="string", id=None),
+            "retrieved_ids": Sequence(
+                feature=Value(dtype="int64", id=None),
+                length=-1,
+                id=None,
+            )
         })
     datasets = DatasetDict({"validation": Dataset.from_pandas(df, features=f)})
     return datasets
