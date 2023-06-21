@@ -437,7 +437,7 @@ if __name__ == "__main__":
     ver = set_version()
     with open("./config.yaml", "r") as f:
         config_dict = yaml.load(f, Loader=yaml.FullLoader)
-    project_name = config_dict["meta_args"]["project_name"]
+    project_name = config_dict["meta_args"]["project"]
     entity_name = config_dict["meta_args"]["entity_name"]
     display_name = config_dict["meta_args"]["display_name"]
 
