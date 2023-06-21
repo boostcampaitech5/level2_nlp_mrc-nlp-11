@@ -87,7 +87,7 @@ def normalize_answer(s: str) -> str:
     return white_space_fix(remove_punc(lower(remove_(s))))
 
 
-def f1_score(prediction: int, ground_truth: int) -> float:
+def f1_score(prediction: str, ground_truth: str) -> float:
 
     prediction_tokens = normalize_answer(prediction).split()
     ground_truth_tokens = normalize_answer(ground_truth).split()

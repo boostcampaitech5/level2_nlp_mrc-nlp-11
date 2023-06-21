@@ -8,6 +8,7 @@ model_args:
   tokenizer_name: null
 data_args:
   dataset_name: "../data/train_dataset"
+  curriculum_learning_prediction_file: "./models/train_eval_json/predictions.json"
   overwrite_cache: false
   preprocessing_num_workers: null
   max_seq_length: 384
