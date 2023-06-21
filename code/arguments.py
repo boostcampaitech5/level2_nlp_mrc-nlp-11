@@ -41,6 +41,10 @@ class DataTrainingArguments:
         default="../data/test_dataset",
         metadata={"help": "The name of the dataset to use."},
     )
+    curriculum_learning_prediction_file: Optional[str] = field(
+        default="./models/curriculum_learning_prediction/predictions.json",
+        metadata={"help": "The name of the prediction file to use."},
+    )
     overwrite_cache: bool = field(
         default=False,
         metadata={"help": "Overwrite the cached training and evaluation sets"},
