@@ -33,6 +33,14 @@ class DataTrainingArguments:
         default="../data/train_dataset",
         metadata={"help": "The name of the dataset to use."},
     )
+    train_dataset_name: Optional[str] = field(
+        default="../data/train_dataset",
+        metadata={"help": "The name of the dataset to use."},
+    )
+    test_dataset_name: Optional[str] = field(
+        default="../data/test_dataset",
+        metadata={"help": "The name of the dataset to use."},
+    )
     curriculum_learning_prediction_file: Optional[str] = field(
         default="./models/curriculum_learning_prediction/predictions.json",
         metadata={"help": "The name of the prediction file to use."},

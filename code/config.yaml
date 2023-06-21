@@ -7,7 +7,8 @@ model_args:
   config_name: null
   tokenizer_name: null
 data_args:
-  dataset_name: "../data/train_dataset"
+  train_dataset_name: "../data/train_dataset"
+  test_dataset_name: "../data/test_dataset"
   curriculum_learning_prediction_file: "./models/train_eval_json/predictions.json"
   overwrite_cache: false
   preprocessing_num_workers: null
@@ -25,8 +26,7 @@ training_args:
   output_dir: "./models/model_name"
   overwrite_output_dir: true
   do_train: true
-  do_eval: true
-  do_predict: false
+  do_eval: false
   evaluation_strategy: "steps"
   eval_steps: 100
   logging_steps: 1
@@ -49,3 +49,9 @@ training_args:
   optim: "adamw_hf"
   report_to: ["wandb"]
   early_stopping: 5
+inference_args:
+  output_dir: "./outputs/output_name"
+  overwrite_output_dir: false
+  do_eval: true
+  do_predict: false
+  report_to: ["wandb"]

@@ -41,7 +41,12 @@ def main():
 
     model_args = ModelArguments(**config_dict["model_args"])
     data_args = DataTrainingArguments(**config_dict["data_args"])
-    training_args = CustomTrainingArguments(**config_dict["training_args"])
+    training_args = CustomTrainingArguments(**config_dict["inference_args"])
+    assert training_args.do_eval ^ training_args.do_predict, "do_eval, do_predict 둘 중 하나만 true여야 합니다."
+    if training_args.do_eval:
+        data_args.dataset_name = data_args.train_dataset_name
+    elif training_args.do_predict:
+        data_args.dataset_name = data_args.test_dataset_name
 
     print(f"model is from {model_args.model_name_or_path}")
     print(f"data is from {data_args.dataset_name}")
