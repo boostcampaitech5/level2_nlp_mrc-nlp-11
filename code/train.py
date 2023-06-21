@@ -1,22 +1,23 @@
-import logging
 import os
 import sys
+import yaml
 import wandb
-from arguments import DataTrainingArguments, ModelArguments
-from datasets import DatasetDict, load_from_disk
+import logging
 import evaluate
-from trainer_qa import QuestionAnsweringTrainer
+from datasets import DatasetDict, load_from_disk
+from transformers.trainer_callback import ProgressCallback
+from utils_qa import check_no_error, postprocess_qa_predictions
+from trainer_qa import QuestionAnsweringTrainer, CustomProgressCallback
+from arguments import DataTrainingArguments, ModelArguments, CustomTrainingArguments
 from transformers import (
     AutoConfig,
     AutoModelForQuestionAnswering,
     AutoTokenizer,
     DataCollatorWithPadding,
     EvalPrediction,
-    HfArgumentParser,
-    TrainingArguments,
+    EarlyStoppingCallback,
     set_seed,
 )
-from utils_qa import check_no_error, postprocess_qa_predictions
 
 logger = logging.getLogger(__name__)
 
@@ -25,20 +26,16 @@ def main():
     # 가능한 arguments 들은 ./arguments.py 나 transformer package 안의 src/transformers/training_args.py 에서 확인 가능합니다.
     # --help flag 를 실행시켜서 확인할 수 도 있습니다.
 
-    project = "Test-01"
-    entity_name = "mrc-project"
-    display_name = "mrc-test"
+    with open("./config.yaml", "r") as f:
+        config_dict = yaml.load(f, Loader=yaml.FullLoader)
+    project = config_dict["meta_args"]["project"]
+    entity_name = config_dict["meta_args"]["entity_name"]
+    display_name = config_dict["meta_args"]["display_name"]
     wandb.init(project=project, entity=entity_name, name=display_name)
 
-    # TODO: argument 전달 부분 수정
-    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
-    model_args, data_args, training_args = parser.parse_args_into_dataclasses()
-    print(model_args.model_name_or_path)
-
-    # [참고] argument를 manual하게 수정하고 싶은 경우에 아래와 같은 방식을 사용할 수 있습니다
-    # training_args.per_device_train_batch_size = 4
-    training_args.report_to = ["wandb"]
-    # TODO: yaml
+    model_args = ModelArguments(**config_dict["model_args"])
+    data_args = DataTrainingArguments(**config_dict["data_args"])
+    training_args = CustomTrainingArguments(**config_dict["training_args"])
 
     print(f"model is from {model_args.model_name_or_path}")
     print(f"data is from {data_args.dataset_name}")
@@ -86,6 +83,8 @@ def main():
     # do_train mrc model 혹은 do_eval mrc model
     if training_args.do_train or training_args.do_eval:
         run_mrc(data_args, training_args, model_args, datasets, tokenizer, model)
+
+    wandb.finish()
 
 
 def get_column_names(training_args, datasets):
@@ -235,6 +234,11 @@ def do_training(training_args, last_checkpoint, model_args, trainer, train_datas
         checkpoint = model_args.model_name_or_path
     else:
         checkpoint = None
+
+    # logging_step마다 콘솔에 로그를 출력하지 않도록 수정
+    # TODO: ProgressCallback stdout 개선방향 찾아보기
+    trainer.remove_callback(ProgressCallback)
+    trainer.add_callback(CustomProgressCallback)
     train_result = trainer.train(resume_from_checkpoint=checkpoint)
     trainer.save_model()  # Saves the tokenizer too for easy upload
 
@@ -269,7 +273,7 @@ def do_evaluation(trainer, eval_dataset):
 
 def run_mrc(
     data_args: DataTrainingArguments,
-    training_args: TrainingArguments,
+    training_args: CustomTrainingArguments,
     model_args: ModelArguments,
     datasets: DatasetDict,
     tokenizer,
@@ -384,18 +388,23 @@ def run_mrc(
     def compute_metrics(p: EvalPrediction):
         return metric.compute(predictions=p.predictions, references=p.label_ids)
 
+    # Early Stopping Callback
+    callbacks = None
+    if training_args.early_stopping:
+        early_stop = EarlyStoppingCallback(training_args.early_stopping)
+        callbacks = [early_stop]
+
     # Trainer 초기화
-    trainer = QuestionAnsweringTrainer(
-        model=model,
-        args=training_args,
-        train_dataset=train_dataset if training_args.do_train else None,
-        eval_dataset=eval_dataset if training_args.do_eval else None,
-        eval_examples=datasets["validation"] if training_args.do_eval else None,
-        tokenizer=tokenizer,
-        data_collator=data_collator,
-        post_process_function=post_processing_function,
-        compute_metrics=compute_metrics,
-    )
+    trainer = QuestionAnsweringTrainer(model=model,
+                                       args=training_args,
+                                       train_dataset=train_dataset if training_args.do_train else None,
+                                       eval_dataset=eval_dataset if training_args.do_eval else None,
+                                       eval_examples=datasets["validation"] if training_args.do_eval else None,
+                                       tokenizer=tokenizer,
+                                       data_collator=data_collator,
+                                       post_process_function=post_processing_function,
+                                       compute_metrics=compute_metrics,
+                                       callbacks=callbacks)
 
     # Training
     if training_args.do_train:

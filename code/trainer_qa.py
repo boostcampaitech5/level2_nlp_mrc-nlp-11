@@ -18,7 +18,7 @@ Question-Answering task와 관련된 'Trainer'의 subclass 코드 입니다.
 
 from transformers import Trainer, is_datasets_available, is_torch_tpu_available
 from transformers.trainer_utils import PredictionOutput
-
+from transformers.trainer_callback import ProgressCallback
 if is_datasets_available():
     import datasets
 
@@ -65,6 +65,12 @@ class QuestionAnsweringTrainer(Trainer):
         if self.post_process_function is not None and self.compute_metrics is not None:
             eval_preds = self.post_process_function(eval_examples, eval_dataset, output.predictions, self.args)
             metrics = self.compute_metrics(eval_preds)
+            # Prefix all keys with metric_key_prefix + '_'
+            for key in list(metrics.keys()):
+                if not key.startswith(f"eval_"):
+                    metrics[f"eval_{key}"] = metrics.pop(key)
+            
+            # TODO: tracking eval_loss
 
             self.log(metrics)
         else:
@@ -107,3 +113,10 @@ class QuestionAnsweringTrainer(Trainer):
 
         predictions = self.post_process_function(test_examples, test_dataset, output.predictions, self.args)
         return predictions
+
+
+class CustomProgressCallback(ProgressCallback):
+
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if state.is_local_process_zero and self.training_bar is not None:
+            _ = logs.pop("total_flos", None)
