@@ -1,24 +1,24 @@
-import logging
 import os
 import sys
-import wandb
-from arguments import DataTrainingArguments, ModelArguments
-from datasets import DatasetDict, load_from_disk
-import evaluate
 import yaml
-from trainer_qa import QuestionAnsweringTrainer
+import wandb
+import logging
+import evaluate
+from random import randint
+from datasets import DatasetDict, load_from_disk
+from transformers.trainer_callback import ProgressCallback
+from utils_qa import check_no_error, postprocess_qa_predictions
+from trainer_qa import QuestionAnsweringTrainer, CustomProgressCallback
+from arguments import DataTrainingArguments, ModelArguments, CustomTrainingArguments
 from transformers import (
     AutoConfig,
     AutoModelForQuestionAnswering,
     AutoTokenizer,
     DataCollatorWithPadding,
     EvalPrediction,
-    HfArgumentParser,
-    TrainingArguments,
+    EarlyStoppingCallback,
     set_seed,
 )
-from utils_qa import check_no_error, postprocess_qa_predictions
-from copy import deepcopy
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +36,9 @@ def sweep_train(config=None):
         config = wandb.config
         idx = next(ver)
 
-        # TODO: argument 전달 부분 수정
-        # parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
-        model_args, data_args, training_args = deepcopy(_model_args), deepcopy(_data_args), deepcopy(_training_args)
+        model_args = ModelArguments(**config_dict["model_args"])
+        data_args = DataTrainingArguments(**config_dict["data_args"])
+        training_args = CustomTrainingArguments(**config_dict["training_args"])
         for key, value in config.items():
             if hasattr(training_args, key):
                 setattr(training_args, key, value)
@@ -48,13 +48,7 @@ def sweep_train(config=None):
                 setattr(data_args, key, value)
         print(model_args.model_name_or_path)
 
-        run.name = f"{experiment_name}_{idx:04}"
-        training_args.output_dir = "./models/" + run.name
-
-        # # [참고] argument를 manual하게 수정하고 싶은 경우에 아래와 같은 방식을 사용할 수 있습니다
-        # # training_args.per_device_train_batch_size = 4
-        training_args.report_to = ["wandb"]
-        # TODO: yaml
+        run.name = display_name + f"_{idx:03}"
 
         print(f"model is from {model_args.model_name_or_path}")
         print(f"data is from {data_args.dataset_name}")
@@ -70,6 +64,7 @@ def sweep_train(config=None):
         logger.info("Training/evaluation parameters %s", training_args)
 
         # 모델을 초기화하기 전에 난수를 고정합니다.
+        training_args.seed = randint(1, (1 << 32) - 1)
         set_seed(training_args.seed)
 
         datasets = load_from_disk(data_args.dataset_name)
@@ -102,6 +97,8 @@ def sweep_train(config=None):
         # do_train mrc model 혹은 do_eval mrc model
         if training_args.do_train or training_args.do_eval:
             run_mrc(data_args, training_args, model_args, datasets, tokenizer, model)
+
+    wandb.finish()
 
 
 def get_column_names(training_args, datasets):
@@ -251,6 +248,11 @@ def do_training(training_args, last_checkpoint, model_args, trainer, train_datas
         checkpoint = model_args.model_name_or_path
     else:
         checkpoint = None
+
+    # logging_step마다 콘솔에 로그를 출력하지 않도록 수정
+    # TODO: ProgressCallback stdout 개선방향 찾아보기
+    trainer.remove_callback(ProgressCallback)
+    trainer.add_callback(CustomProgressCallback)
     train_result = trainer.train(resume_from_checkpoint=checkpoint)
     trainer.save_model()  # Saves the tokenizer too for easy upload
 
@@ -285,7 +287,7 @@ def do_evaluation(trainer, eval_dataset):
 
 def run_mrc(
     data_args: DataTrainingArguments,
-    training_args: TrainingArguments,
+    training_args: CustomTrainingArguments,
     model_args: ModelArguments,
     datasets: DatasetDict,
     tokenizer,
@@ -328,7 +330,7 @@ def run_mrc(
             stride=data_args.doc_stride,
             return_overflowing_tokens=True,
             return_offsets_mapping=True,
-            return_token_type_ids=False,  # roberta모델을 사용할 경우 False, bert를 사용할 경우 True로 표기해야합니다.
+            return_token_type_ids=False if model.base_model_prefix == "roberta" else True,  # roberta모델을 사용할 경우 False, bert를 사용할 경우 True
             padding="max_length" if data_args.pad_to_max_length else False,
         )
 
@@ -362,7 +364,7 @@ def run_mrc(
             stride=data_args.doc_stride,
             return_overflowing_tokens=True,
             return_offsets_mapping=True,
-            return_token_type_ids=False,  # roberta모델을 사용할 경우 False, bert를 사용할 경우 True로 표기해야합니다.
+            return_token_type_ids=False if model.base_model_prefix == "roberta" else True,  # roberta모델을 사용할 경우 False, bert를 사용할 경우 True
             padding="max_length" if data_args.pad_to_max_length else False,
         )
 
@@ -400,18 +402,23 @@ def run_mrc(
     def compute_metrics(p: EvalPrediction):
         return metric.compute(predictions=p.predictions, references=p.label_ids)
 
+    # Early Stopping Callback
+    callbacks = None
+    if training_args.early_stopping:
+        early_stop = EarlyStoppingCallback(training_args.early_stopping)
+        callbacks = [early_stop]
+
     # Trainer 초기화
-    trainer = QuestionAnsweringTrainer(
-        model=model,
-        args=training_args,
-        train_dataset=train_dataset if training_args.do_train else None,
-        eval_dataset=eval_dataset if training_args.do_eval else None,
-        eval_examples=datasets["validation"] if training_args.do_eval else None,
-        tokenizer=tokenizer,
-        data_collator=data_collator,
-        post_process_function=post_processing_function,
-        compute_metrics=compute_metrics,
-    )
+    trainer = QuestionAnsweringTrainer(model=model,
+                                       args=training_args,
+                                       train_dataset=train_dataset if training_args.do_train else None,
+                                       eval_dataset=eval_dataset if training_args.do_eval else None,
+                                       eval_examples=datasets["validation"] if training_args.do_eval else None,
+                                       tokenizer=tokenizer,
+                                       data_collator=data_collator,
+                                       post_process_function=post_processing_function,
+                                       compute_metrics=compute_metrics,
+                                       callbacks=callbacks)
 
     # Training
     if training_args.do_train:
@@ -423,27 +430,22 @@ def run_mrc(
 
 
 if __name__ == "__main__":
-    # main()
     # Sweep을 통해 실행될 학습 코드 작성
     with open("./sweep.yaml", "r") as f:
         sweep_config = yaml.load(f, Loader=yaml.FullLoader)
 
     ver = set_version()
-    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
-    meta = sweep_config.pop("meta_config")
-    tmp = []
-    for k, v in meta.items():
-        tmp.append(f"--{k}")
-        tmp.append(v)
-    _model_args, _data_args, _training_args = parser.parse_args_into_dataclasses(tmp)
-
-    experiment_name = "Test"
+    with open("./config.yaml", "r") as f:
+        config_dict = yaml.load(f, Loader=yaml.FullLoader)
+    project_name = config_dict["meta_args"]["project_name"]
+    entity_name = config_dict["meta_args"]["entity_name"]
+    display_name = config_dict["meta_args"]["display_name"]
 
     # Sweep 생성
     sweep_id = wandb.sweep(
         sweep=sweep_config,  # config 딕셔너리 추가,
-        entity="mrc-project",  # 팀 이름
-        project=experiment_name  # project의 이름 추가
+        entity=entity_name,  # 팀 이름
+        project=project_name  # project의 이름 추가
     )
     wandb.agent(
         sweep_id=sweep_id,  # sweep의 정보를 입력
