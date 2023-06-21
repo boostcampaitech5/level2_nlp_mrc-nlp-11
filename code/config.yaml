@@ -1,6 +1,6 @@
 meta_args:
   entity_name: "mrc-project"
-  project: "Test"
+  project_name: "Test"
   display_name: "001"
 model_args:
   model_name_or_path: klue/bert-base
