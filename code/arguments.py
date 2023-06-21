@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Optional
+from transformers import TrainingArguments
 
 
 @dataclass
@@ -84,3 +85,8 @@ class DataTrainingArguments:
         default="wiki",
         metadata={"help": "elasticsearch에서 어떤 인덱스를 쓸 것인지에 대한 인자. 기본 : 'wiki', 사용 가능 인자 : 'wiki', 추가 예정 : 'wiki_preprocessed'"},
     )
+
+
+@dataclass
+class CustomTrainingArguments(TrainingArguments):
+    early_stopping: Optional[int] = field(default=None, metadata={"help": "early_stopping 여부와 patience 크기를 결정하는 인자"})
