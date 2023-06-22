@@ -36,6 +36,7 @@ def main():
     model_args = ModelArguments(**config_dict["model_args"])
     data_args = DataTrainingArguments(**config_dict["data_args"])
     training_args = CustomTrainingArguments(**config_dict["training_args"])
+    data_args.dataset_name = data_args.train_dataset_name
 
     print(f"model is from {model_args.model_name_or_path}")
     print(f"data is from {data_args.dataset_name}")
