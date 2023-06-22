@@ -69,7 +69,7 @@ def sweep_train(config=None):
         set_seed(training_args.seed)
 
         run.name = display_name + f"_{idx:03}"
-        training_args.output_dir = training_args.output_dir + f"_{idx:03}"
+        training_args.output_dir = os.path.join(training_args.output_dir, f"{idx:03}")
         data_args.dataset_name = data_args.train_dataset_name
 
         datasets = load_from_disk(data_args.dataset_name)
