@@ -34,11 +34,14 @@ def sweep_train(config=None):
 
     with wandb.init(config=config) as run:
         config = wandb.config
+
+        ver = set_version()
         idx = next(ver)
 
         model_args = ModelArguments(**config_dict["model_args"])
         data_args = DataTrainingArguments(**config_dict["data_args"])
         training_args = CustomTrainingArguments(**config_dict["training_args"])
+
         for key, value in config.items():
             if hasattr(training_args, key):
                 setattr(training_args, key, value)
@@ -47,8 +50,6 @@ def sweep_train(config=None):
             if hasattr(data_args, key):
                 setattr(data_args, key, value)
         print(model_args.model_name_or_path)
-
-        run.name = display_name + f"_{idx:03}"
 
         print(f"model is from {model_args.model_name_or_path}")
         print(f"data is from {data_args.dataset_name}")
@@ -66,6 +67,10 @@ def sweep_train(config=None):
         # 모델을 초기화하기 전에 난수를 고정합니다.
         training_args.seed = randint(1, (1 << 32) - 1)
         set_seed(training_args.seed)
+
+        run.name = display_name + f"_{idx:03}"
+        training_args.output_dir = training_args.output_dir + f"_{idx:03}"
+        data_args.dataset_name = data_args.train_dataset_name
 
         datasets = load_from_disk(data_args.dataset_name)
         print(datasets)
@@ -434,7 +439,6 @@ if __name__ == "__main__":
     with open("./sweep.yaml", "r") as f:
         sweep_config = yaml.load(f, Loader=yaml.FullLoader)
 
-    ver = set_version()
     with open("./config.yaml", "r") as f:
         config_dict = yaml.load(f, Loader=yaml.FullLoader)
     project_name = config_dict["meta_args"]["project_name"]
