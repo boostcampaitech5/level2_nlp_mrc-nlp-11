@@ -31,10 +31,10 @@ def main():
 
     with open("./config.yaml", "r") as f:
         config_dict = yaml.load(f, Loader=yaml.FullLoader)
-    project = config_dict["meta_args"]["project"]
+    project_name = config_dict["meta_args"]["project_name"]
     entity_name = config_dict["meta_args"]["entity_name"]
     display_name = config_dict["meta_args"]["display_name"]
-    wandb.init(project=project, entity=entity_name, name=display_name)
+    wandb.init(project=project_name, entity=entity_name, name=display_name)
 
     model_args = ModelArguments(**config_dict["model_args"])
     data_args = DataTrainingArguments(**config_dict["data_args"])
