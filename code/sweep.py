@@ -34,8 +34,6 @@ def sweep_train(config=None):
 
     with wandb.init(config=config) as run:
         config = wandb.config
-
-        ver = set_version()
         idx = next(ver)
 
         model_args = ModelArguments(**config_dict["model_args"])
@@ -438,6 +436,8 @@ if __name__ == "__main__":
     # Sweep을 통해 실행될 학습 코드 작성
     with open("./sweep.yaml", "r") as f:
         sweep_config = yaml.load(f, Loader=yaml.FullLoader)
+
+    ver = set_version()
 
     with open("./config.yaml", "r") as f:
         config_dict = yaml.load(f, Loader=yaml.FullLoader)
