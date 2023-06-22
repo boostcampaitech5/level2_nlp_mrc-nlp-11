@@ -56,6 +56,8 @@ def main():
     # 모델을 초기화하기 전에 난수를 고정합니다.
     set_seed(training_args.seed)
 
+    data_args.dataset_name = data_args.train_dataset_name
+
     datasets = load_from_disk(data_args.dataset_name)
     print(datasets)
 
