@@ -5,13 +5,17 @@
 
 <img src="https://img.shields.io/badge/Private-6th-green"/>
 
-![image](https://github.com/boostcampaitech5/level2_nlp_mrc-nlp-11/assets/95160680/17c36cc7-1462-4294-9002-347040bb0eeb)
+![image](https://github.com/boostcampaitech5/level2_nlp_mrc-nlp-11/assets/95160680/a3462e23-b732-4127-8f73-2e6b8d9e7856)
+
+
+
 
 ## Outline
 
 : **Linking MRC and Retrieval**
 
-![image](https://github.com/boostcampaitech5/level2_nlp_mrc-nlp-11/assets/95160680/6aed6ade-ee73-4bfe-80ea-06f963dfa94e)
+![image](https://github.com/boostcampaitech5/level2_nlp_mrc-nlp-11/assets/95160680/1fe5ad53-d143-487d-a260-029c60343539)
+
 
 - **ODQA:** 질의가 들어왔을 때 답변해 주는 질의응답 시스템으로 사전에 구축된 Knowledge Source에서 질의와 관련된 문서를 찾아주는 Retriever 단계와 전달된 문서를 읽고 적절한 답변을 찾거나 만들어 주는 Reader 단계로 구성된다.
 - Query(input): 서울의 GDP는 세계 몇 위야?
@@ -83,15 +87,17 @@ level2_nlp_mrc-nlp-11
 
 #### Context Length 분포
 
-![image](https://github.com/boostcampaitech5/level2_nlp_mrc-nlp-11/assets/95160680/ce008096-e3bb-4d3e-80fc-0422d95c522d)
+![image](https://github.com/boostcampaitech5/level2_nlp_mrc-nlp-11/assets/95160680/10f13527-7cbd-4189-9f13-589483bf0846)
 
 #### Question Length 분포
 
-![image](https://github.com/boostcampaitech5/level2_nlp_mrc-nlp-11/assets/95160680/c3fd4774-7faa-4899-b9dd-e42c5816c9a6)
+![image](https://github.com/boostcampaitech5/level2_nlp_mrc-nlp-11/assets/95160680/773b8ca9-71f1-40ab-addf-45787286ed2a)
+
 
 #### Answers Length 분포
 
-![image](https://github.com/boostcampaitech5/level2_nlp_mrc-nlp-11/assets/95160680/2eb8c3f5-3ed0-46c8-8b64-1e246c4da342)
+![image](https://github.com/boostcampaitech5/level2_nlp_mrc-nlp-11/assets/95160680/db86e37c-2c59-4007-8b28-ac9025a2b78a)
+
 
 ## Retrieval Model
 
@@ -117,10 +123,9 @@ level2_nlp_mrc-nlp-11
 
 - k개의 검색 결과 중 Positive Passage가 존재할 경우 1, 아닌 경우 0으로 판단하여 계산한다.
 
-![image](https://github.com/boostcampaitech5/level2_nlp_mrc-nlp-11/assets/95160680/150eaa06-b1f0-4b4f-aec1-67abe836805d)
+![image](https://github.com/boostcampaitech5/level2_nlp_mrc-nlp-11/assets/95160680/13b8b41f-6923-4136-9d6d-dcfabc1b14fc)
 
-
-![image](https://github.com/boostcampaitech5/level2_nlp_mrc-nlp-11/assets/95160680/672ec31e-89c5-4db2-8b5b-78641fbe3ec3)
+![image](https://github.com/boostcampaitech5/level2_nlp_mrc-nlp-11/assets/95160680/2bb9740d-a639-45f4-b4d8-539e7a61f62f)
 
 ## Reader Model
 
@@ -153,7 +158,8 @@ Reader 모델의 성능평가는 Retrieval 모델까지 이어 붙인 상태에�
     | Baseline(Augmentation) | 45.8333 | 53.7075 | BM25 |
 - 떨어진 이유를 분석해 본 결과 두 데이터의 context 길이 분포가 많이 다르다는 것을 알 수 있었다.
     
-  ![image](https://github.com/boostcampaitech5/level2_nlp_mrc-nlp-11/assets/95160680/4b473902-6e18-496f-9aec-87d93a41a412)
+  ![image](https://github.com/boostcampaitech5/level2_nlp_mrc-nlp-11/assets/95160680/2a3ff0bc-0cb4-4f8e-b311-409ff852e200)
+
     
 - 그래서 생각해 낸 방법이 서로 분포가 다른 데이터를 순차적으로 학습 시켜주는 것이었다. 데이터의 양이 훨씬 많은 KorQuad로 1차 Fine-tuning을 거친 후 기존의 Train 데이터로 다시 Fine-tuning 해준다면 더 성능이 오를 것이라는 생각이 들었다.
     
