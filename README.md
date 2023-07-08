@@ -62,6 +62,7 @@ level2_nlp_mrc-nlp-11
 |   |-- curriculum_learning.py
 |   |-- evaluation.py
 |   |-- inference.py
+|   |-- negative_sampling.py
 |   |-- retrieval.py
 |   |-- sweep.py
 |   |-- sweep.yaml
